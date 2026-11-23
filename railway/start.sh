@@ -25,8 +25,10 @@ export OCR_THREADS="${OCR_THREADS:-2}"
 # Memory guard. The core app needs about 100 MB, but the two on-device ONNX features need more:
 # OCR (PaddleOCR) about 600 MB and local embeddings for "Ask your archive" about 550 MB. Under a
 # 0.5 GB limit (Railway Free/Trial) they would be OOM-killed on the first document, so below
-# SMALL_PLAN_LIMIT_MB the start script locks OCR off and bootstrap.mjs switches local embeddings
-# to keyword search. Raise the service's memory to 1 GB or more and redeploy to use them.
+# SMALL_PLAN_LIMIT_MB the start script locks OCR off and "Ask your archive" to keyword search
+# (environment values lock a setting in the web interface). Raise the service's memory to 1 GB or
+# more and redeploy to unlock both, or set RAG_EMBEDDING_PROVIDER=custom to use the LLM
+# provider's embeddings API (any plan).
 limit_bytes=""
 if [ -r /sys/fs/cgroup/memory.max ]; then
   limit_bytes=$(cat /sys/fs/cgroup/memory.max)
@@ -35,9 +37,11 @@ elif [ -r /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
 fi
 case "$limit_bytes" in ''|max|*[!0-9]*) limit_mb=0 ;; *) limit_mb=$((limit_bytes / 1048576)) ;; esac
 if [ "$limit_mb" -gt 0 ] && [ "$limit_mb" -lt "${SMALL_PLAN_LIMIT_MB:-900}" ]; then
-  export PAPERLESS_AI_SMALL_PLAN=1
   if [ -z "${OCR_ENABLED:-}" ]; then
     export OCR_ENABLED=false
+  fi
+  if [ -z "${RAG_EMBEDDING_PROVIDER:-}" ]; then
+    export RAG_EMBEDDING_PROVIDER=none
   fi
   echo "[railway] memory limit ${limit_mb} MB: OCR and local embeddings are off (they need about 1 GB). Raise the service memory and redeploy to use them." >&2
 fi

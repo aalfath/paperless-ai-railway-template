@@ -13,15 +13,6 @@ const password = process.env.ADMIN_PASSWORD || '';
 
 const ctx = new AppContext({ dataDir });
 try {
-  // Small plans (see start.sh): local ONNX embeddings need about 550 MB on top of the app, so use
-  // the keyword search instead. Remote embeddings (OpenAI-compatible, Ollama) are left alone.
-  if (process.env.PAPERLESS_AI_SMALL_PLAN === '1' && !process.env.RAG_EMBEDDING_PROVIDER) {
-    const stored = ctx.config.current.rag.embeddingProvider;
-    if (stored === 'local') {
-      ctx.config.update({ rag: { embeddingProvider: 'none' } });
-      console.log('[railway] small memory limit: "Ask your archive" uses keyword search (local embeddings need about 1 GB; remote embeddings work on any plan)');
-    }
-  }
   if (ctx.repos.users.count() > 0) {
     console.log('[railway] accounts exist, admin bootstrap skipped');
   } else {
