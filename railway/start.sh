@@ -19,8 +19,28 @@ if [ -n "${LLM_API_KEY:-}" ]; then
   export CUSTOM_MODEL="${CUSTOM_MODEL:-${LLM_MODEL:-gpt-5-mini}}"
 fi
 
-# Small Railway plans: OCR (off by default) would start one thread per host CPU (up to 8).
+# Small Railway plans: OCR would start one thread per host CPU (up to 8).
 export OCR_THREADS="${OCR_THREADS:-2}"
+
+# Memory guard. The core app needs about 100 MB, but the two on-device ONNX features need more:
+# OCR (PaddleOCR) about 600 MB and local embeddings for "Ask your archive" about 550 MB. Under a
+# 0.5 GB limit (Railway Free/Trial) they would be OOM-killed on the first document, so below
+# SMALL_PLAN_LIMIT_MB the start script locks OCR off and bootstrap.mjs switches local embeddings
+# to keyword search. Raise the service's memory to 1 GB or more and redeploy to use them.
+limit_bytes=""
+if [ -r /sys/fs/cgroup/memory.max ]; then
+  limit_bytes=$(cat /sys/fs/cgroup/memory.max)
+elif [ -r /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
+  limit_bytes=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
+fi
+case "$limit_bytes" in ''|max|*[!0-9]*) limit_mb=0 ;; *) limit_mb=$((limit_bytes / 1048576)) ;; esac
+if [ "$limit_mb" -gt 0 ] && [ "$limit_mb" -lt "${SMALL_PLAN_LIMIT_MB:-900}" ]; then
+  export PAPERLESS_AI_SMALL_PLAN=1
+  if [ -z "${OCR_ENABLED:-}" ]; then
+    export OCR_ENABLED=false
+  fi
+  echo "[railway] memory limit ${limit_mb} MB: OCR and local embeddings are off (they need about 1 GB). Raise the service memory and redeploy to use them." >&2
+fi
 mkdir -p "$PAPERLESS_AI_DATA_DIR"
 
 node /railway/bootstrap.mjs
